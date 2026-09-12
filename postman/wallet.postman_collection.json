@@ -1,0 +1,301 @@
+{
+  "info": {
+    "name": "Wallet Service",
+    "_postman_id": "3d1a9c8e-4f2b-4e77-9a1c-wallet0001col",
+    "description": "Collection completa do serviço Wallet (Spring Boot).\n\n## Autenticação\nTodas as rotas de negócio exigem o header `X-API-Key`. O valor padrão local é `local-dev-api-key` (configurável via variável de ambiente `WALLET_API_KEY`). As rotas públicas (`/swagger-ui`, `/v3/api-docs`, `/actuator/health`) não exigem a chave.\n\n## Idempotência\nA criação de transações exige o header `Idempotency-Key`. A collection gera automaticamente um UUID por requisição (pre-request script). Para testar reprocessamento idempotente, fixe a variável `idempotencyKey`.\n\n## Variáveis\n- `baseUrl` (default: http://localhost:8080)\n- `apiKey` (default: local-dev-api-key)\n- `walletId` — preenchido automaticamente ao criar/consultar uma carteira\n- `idempotencyKey` — usado na criação de transações",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      { "key": "key", "value": "X-API-Key", "type": "string" },
+      { "key": "value", "value": "{{apiKey}}", "type": "string" },
+      { "key": "in", "value": "header", "type": "string" }
+    ]
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080", "type": "string" },
+    { "key": "apiKey", "value": "local-dev-api-key", "type": "string" },
+    { "key": "walletId", "value": "", "type": "string" },
+    { "key": "idempotencyKey", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Wallets",
+      "item": [
+        {
+          "name": "Criar carteira",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('retorna id', () => pm.expect(body.id).to.be.a('string'));",
+                  "pm.test('saldo inicial zero', () => pm.expect(Number(body.balance)).to.eql(0));",
+                  "pm.collectionVariables.set('walletId', body.id);",
+                  "pm.test('header Location presente', () => pm.expect(pm.response.headers.has('Location')).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"holderName\": \"Alice Silva\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/wallets",
+              "host": ["{{baseUrl}}"],
+              "path": ["wallets"]
+            },
+            "description": "Cria uma nova carteira. `holderName` é obrigatório (máx. 255 caracteres). Retorna 201 com header `Location` e a carteira criada com saldo 0."
+          }
+        },
+        {
+          "name": "Consultar carteira",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('id confere', () => pm.expect(body.id).to.eql(pm.collectionVariables.get('walletId')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/wallets/{{walletId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["wallets", "{{walletId}}"]
+            },
+            "description": "Retorna a carteira pelo id (UUID). 404 se não existir."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Transactions",
+      "item": [
+        {
+          "name": "Criar transação (CREDIT)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get('idempotencyKey')) {",
+                  "  pm.collectionVariables.set('idempotencyKey', require('uuid').v4());",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('tipo CREDIT', () => pm.expect(body.type).to.eql('CREDIT'));",
+                  "pm.test('balanceAfter presente', () => pm.expect(body.balanceAfter).to.exist);",
+                  "// Limpa a chave para a próxima transação usar uma nova",
+                  "pm.collectionVariables.set('idempotencyKey', '');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"CREDIT\",\n  \"amount\": 100.00\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/wallets/{{walletId}}/transactions",
+              "host": ["{{baseUrl}}"],
+              "path": ["wallets", "{{walletId}}", "transactions"]
+            },
+            "description": "Credita valor na carteira. Requer header `Idempotency-Key` (gerado automaticamente). `amount` deve ser positivo, até 17 dígitos inteiros e 2 casas decimais."
+          }
+        },
+        {
+          "name": "Criar transação (DEBIT)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get('idempotencyKey')) {",
+                  "  pm.collectionVariables.set('idempotencyKey', require('uuid').v4());",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('tipo DEBIT', () => pm.expect(body.type).to.eql('DEBIT'));",
+                  "pm.collectionVariables.set('idempotencyKey', '');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"DEBIT\",\n  \"amount\": 30.00\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/wallets/{{walletId}}/transactions",
+              "host": ["{{baseUrl}}"],
+              "path": ["wallets", "{{walletId}}", "transactions"]
+            },
+            "description": "Debita valor da carteira. Retorna erro de negócio se o saldo for insuficiente."
+          }
+        },
+        {
+          "name": "Criar transação (idempotência fixa)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "// Reenvie esta mesma requisição: o resultado deve permanecer idêntico (sem duplicar o saldo)."
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "demo-fixed-key-001" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"CREDIT\",\n  \"amount\": 50.00\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/wallets/{{walletId}}/transactions",
+              "host": ["{{baseUrl}}"],
+              "path": ["wallets", "{{walletId}}", "transactions"]
+            },
+            "description": "Usa um `Idempotency-Key` fixo. Reenviar a mesma requisição retorna a transação original sem aplicar o valor novamente."
+          }
+        },
+        {
+          "name": "Listar transações",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('estrutura paginada', () => {",
+                  "  pm.expect(body).to.have.property('content');",
+                  "  pm.expect(body).to.have.property('page');",
+                  "  pm.expect(body).to.have.property('size');",
+                  "  pm.expect(body).to.have.property('totalElements');",
+                  "  pm.expect(body).to.have.property('totalPages');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/wallets/{{walletId}}/transactions?page=0&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["wallets", "{{walletId}}", "transactions"],
+              "query": [
+                { "key": "page", "value": "0", "description": "Índice da página (>= 0). Default 0." },
+                { "key": "size", "value": "20", "description": "Itens por página (1-100). Default 20." },
+                { "key": "from", "value": "2026-01-01T00:00:00Z", "description": "Filtro inicial (ISO-8601). Opcional.", "disabled": true },
+                { "key": "to", "value": "2026-12-31T23:59:59Z", "description": "Filtro final (ISO-8601). Opcional.", "disabled": true }
+              ]
+            },
+            "description": "Lista as transações da carteira, ordenadas por `createdAt` desc. Suporta paginação (`page`, `size`) e filtro por período (`from`, `to`)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Public",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/actuator/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["actuator", "health"]
+            },
+            "description": "Endpoint público de health check (não exige API key)."
+          }
+        },
+        {
+          "name": "OpenAPI (JSON)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v3/api-docs",
+              "host": ["{{baseUrl}}"],
+              "path": ["v3", "api-docs"]
+            },
+            "description": "Especificação OpenAPI em JSON (público)."
+          }
+        },
+        {
+          "name": "Swagger UI",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/swagger-ui.html",
+              "host": ["{{baseUrl}}"],
+              "path": ["swagger-ui.html"]
+            },
+            "description": "Interface Swagger UI (público)."
+          }
+        }
+      ]
+    }
+  ]
+}

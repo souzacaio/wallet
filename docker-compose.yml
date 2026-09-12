@@ -1,0 +1,34 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: wallet-db
+    environment:
+      POSTGRES_DB: wallet
+      POSTGRES_USER: wallet
+      POSTGRES_PASSWORD: wallet
+    ports:
+      - "5432:5432"
+    volumes:
+      - wallet-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wallet -d wallet"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    container_name: wallet-app
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://db:5432/wallet
+      DB_USERNAME: wallet
+      DB_PASSWORD: wallet
+      WALLET_API_KEY: local-dev-api-key
+    ports:
+      - "8080:8080"
+
+volumes:
+  wallet-db-data:

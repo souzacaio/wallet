@@ -94,12 +94,5 @@ descoberto). As invariantes de domínio vivem na entidade, não espalhadas pelos
 
 - **Correlação/observabilidade**: logging estruturado com um id de requisição/correlação, além de
   métricas (contagem de operações, taxa de rejeição, tempo de espera do lock) e tracing.
-- **Rate limiting / gestão de API keys**: múltiplas chaves, throttling por cliente, rotação de
-  chaves e armazenamento de chaves com hash em vez de um único segredo compartilhado na config.
-- **Retenção/TTL das chaves de idempotência**: uma política de limpeza para registros antigos de
-  idempotência e um contrato explícito de por quanto tempo uma chave é honrada.
-- **Outbox / eventos**: publicar um evento de domínio por transação aplicada para consumidores downstream.
-- **Testes de carga/soak**: medir a contenção de lock numa carteira quente e comparar com uma
-  abordagem de update condicional atômico sob carga próxima de produção.
-- **Catálogo de erros mais granular** e formatação problem+json (RFC 9457).
 - **Pipeline de CI** rodando a suíte de testes e construindo a imagem a cada push.
+- **API Gateway**: utilização de API Gateway como camada de entrada das APIs, centralizando roteamento, segurança, autenticação, controle de acesso e gerenciamento das requisições entre clientes e serviços.
